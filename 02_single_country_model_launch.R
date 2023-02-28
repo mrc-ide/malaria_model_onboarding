@@ -46,7 +46,7 @@ site_data<- foresite:::get_site(iso)
 
 prep_inputs<- function(site_data){
   
-  #' Prep inputs (without parameter updates)-- not explicitly passing site_data object in but this should be updated
+  #' Prep inputs (without parameter updates)
   #'
   #' @param site_data dataset with site files for country
   #' output: list with site name, urban/rural grouping, iso code, and parameters to pass into cluster
