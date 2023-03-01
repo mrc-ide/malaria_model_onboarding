@@ -108,6 +108,7 @@ specify_intervention_coverage<- function(output, mda= T, rtss= T){
     
     if (rtss== T){
     month<- 30
+    #
     params <- set_mass_rtss(
       params,
       timesteps = params$timesteps,
@@ -127,7 +128,10 @@ specify_intervention_coverage<- function(output, mda= T, rtss= T){
     return(output)
   }
   
-  output<- lapply(c(1:sites), modify_interventions, mda= change_mda, rtss= change_rtss) 
+  output<- lapply(c(1:sites), 
+                  modify_interventions, 
+                  mda= change_mda, 
+                  rtss= change_rtss) 
     
   }
   

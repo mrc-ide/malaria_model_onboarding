@@ -22,91 +22,163 @@ model<- data.table(readRDS('C:/Documents and Settings/lhaile/Documents/raw_model
 
 
 # reformat and aggregate model outputs  ----------------------------------------
-# reformat case outputs to long
-raw_clin <- model |> 
-  select(timestep, contains("n_inc_clin"), contains("n_inc_sev"), contains("n_age"), 'n_treated') |> # need clinical cases, severe cases, population, number treated 
-  pivot_longer(c(contains("n_inc_clin"), contains("n_inc_sev"), contains("n_age")),
-               names_to = "age", 
-               values_to = "value") |>
-  mutate(type = ifelse(grepl('n_inc_clinical', age), 'clinical', 'severe')) |>
-  mutate(type = ifelse(grepl('n_age', age), 'population', type))|>
-  mutate(age = gsub('n_inc_clinical_', '', age),
-         age = gsub('n_inc_severe_', '', age),
-         age = gsub('n_age_', '', age)) |>
-  spread(key= type, value= value) |>
-  separate(age, into = c("age_years_start", "age_years_end"), sep = "_")
 
+aggregate_outputs<- function(dt, interval){
+  
+  #' aggregate incident cases based on a pre-determined time interval (expressed in days). 
+  #' sum to the country level.
+  #' 
+  #' @param dt       raw model output from malariasimulation package
+  #' @param interval time period you would like to calculate incidence over, expressed in days.
+  #' 
+  #' output: data table with summed cases and rates over specified time interval.
+  
+  # reformat case outputs to long
+  # need clinical cases, severe cases, population, number treated
+  
+  message(paste0('aggregating outputs by time interval: ', interval, ' days'))
+  dt <- dt |> 
+    select(timestep, 
+           contains("n_inc_clin"), contains("n_inc_sev"), contains("n_age"), 'n_treated') |>  
+    pivot_longer(c(contains("n_inc_clin"), contains("n_inc_sev"), contains("n_age")),
+                 names_to = "age", 
+                 values_to = "value") |>
+    mutate(type = ifelse(grepl('n_inc_clinical', age), 'clinical', 'severe')) |>
+    mutate(type = ifelse(grepl('n_age', age), 'population', type))|>
+    mutate(age = gsub('n_inc_clinical_', '', age),
+           age = gsub('n_inc_severe_', '', age),
+           age = gsub('n_age_', '', age)) |>
+    spread(key= type, value= value) |>
+    separate(age, into = c("age_years_start", "age_years_end"), sep = "_")
+  
+  
+  # calculate incidence based on some time interval
+  dt <- dt |>
+    mutate(time = as.integer(timestep/ interval))
+  
+  
+  # sum cases based on this interval, also by country
+  dt<- dt |> 
+    group_by(age_years_start, time, iso) |> 
+    mutate(clinical = sum(clinical),
+           severe = sum(severe),
+           n_treated = sum(n_treated),
+           population = round(mean(population))) |>
+    select(-timestep) |>
+    distinct()
+  
+  
+  
+  # calculate rates based on this interval
+  dt<- dt |> 
+    mutate(clin_rate = clinical/ population,
+           severe_rate = severe/ population)
+  
+  return(dt)
+  message('completed aggregation')
+  
+}
 
-# calculate incidence based on some time interval
-# use D_count + U_count to calculate prevalence?
-interval<- 30 # monthly
-
-raw_clin <- raw_clin |>
-  mutate(time = as.integer(timestep/ interval))
-
-
-# sum cases based on this interval, also by country
-raw_clin<- raw_clin |> 
-  group_by(age_years_start, time, iso) |> 
-  mutate(clinical = sum(clinical),
-         severe = sum(severe),
-         n_treated = sum(n_treated),
-         population = round(mean(population))) |>
-  select(-timestep) |>
-  distinct()
-
-
-
-# calculate rates based on this interval
-raw_clin<- raw_clin |> 
-  mutate(clin_rate = clinical/ population,
-         severe_rate = severe/ population)
-
+dt<-aggregate_outputs(model, interval= 30)
 
 # calculate deaths -------------------------------------------------------------
-# per GTS deaths are calculated using a scaling factor
-# calculate deaths
-treatment_scaler<- 0.45
-cfr<- 0.215
-mild_dw<- 0.006
-moderate_dw<- 0.051
-severe_dw<- 0.133
-cfr<- 0.215
-episode_length<-  0.01375
-severe_episode_length<-  0.04795
-lifespan<- 63
 
-# in count space
-# deaths= 0.215 * severe cases
-# where severe cases= 0, deaths= 0
-# remove a proportion of the cases that have received treatment
-raw_clin<- raw_clin |>
-  mutate(deaths =  cfr * severe - (n_treated * treatment_scaler))
+calculate_deaths_ylls<- function(dt, cfr= 0.215, treatment_scaler= 0.45, lifespan= 0.63){
+  
+  #' Calculate deaths + years of life lost (YLLs) per GTS method.
+  #' Where severe cases= 0, deaths= 0. Additionally remove a proportion of the cases that have received treatment.
+  #' 
+  #' @param dt               malariasimulation model outputs with columns 'severe' for severe incidence and 'n_treated' for number of individuals treated
+  #' @param cfr              per GTS method, deaths are calculated using a case fatality ratio (CFR) value that is applied to severe incidence.
+  #'                         see World Malaria Report and Wilson et al. for more information.
+  #' @param treatment_scaler we remove a proportion of cases that have received treatment, assuming that 45% of treated cases remit and
+  #'                         are no longer susceptible to mortality.
+  #' @param lifespan         expected lifespan used to calculate YLLs. 
+  #'                         YLLs are calculated by multiplying deaths by the number of years an individual was expected to live past their year of death.
+  #'                         when comparing YLLs across different locations, it is recommended to use the same lifespan across YLL calculations.
+  #'                         Typically, you should use the highest observed life expectancy in the region/ location you are studying.
+  #' Output: data table with columns titled 'deaths' and 'yll'
+
+  
+  message('calculating deaths and YLLs')
+  
+  dt<- dt |>
+    mutate(deaths =  cfr * severe - (n_treated * treatment_scaler))
+  
+  
+  dt<- data.table(dt)
+  
+  dt[deaths< 0 , deaths:= 0]
+  dt[, deaths:= as.integer(deaths)]
+  
+  # calculate ylls
+  dt[, `:=` (age_years_start= as.numeric(age_years_start),
+             age_years_end= as.numeric(age_years_end))]
+  
+  dt <- dt |>
+    mutate(yll= deaths * (lifespan - (age_years_end - age_years_start)/2))  
+  
+  message('conpleted calculation of deaths and YLLs')
+  
+  return(dt)
+}
 
 
-raw_clin<- data.table(raw_clin)
-raw_clin[deaths< 0 , deaths:= 0]
-raw_clin[, deaths:= as.integer(deaths)]
+dt<- calculate_deaths_ylls(dt)
 
-# calculate ylls
-raw_clin[, `:=` (age_years_start= as.numeric(age_years_start),
-                 age_years_end= as.numeric(age_years_end))]
+calculate_ylds_dalys<- function(dt, 
+                                mild_dw= 0.006, 
+                                moderate_dw= 0.051, 
+                                severe_dw= 0.133,
+                                clin_episode_length= 0.01375,
+                                severe_episode_length= 0.04795){
+  
+  #' Calculate Years Lived with Disability (YLDs) and Disability-Adjusted Life-Years
+  #' based on disability weights from the Global Burden of Disease study.
+  #' 
+  #' Disability weights sourced here:
+  #' https://view.officeapps.live.com/op/view.aspx?src=https%3A%2F%2Fghdx.healthdata.org%2Fsites%2Fdefault%2Ffiles%2Frecord-attached-files%2FIHME_GBD_2017_DISABILITY_WEIGHTS_Y2018M11D08.XLSX&wdOrigin=BROWSELINK
+  #' 
+  #' Keep in mind this is an approximation of YLD estimation from the GBD study; disability due to comorbid conditions
+  #' such as motor impairment and anemia are excluded.
+  #' 
+  #' For now, we assume that cases under 5 are moderate, due to the higher severity of malaria at younger ages.
+  #' This assumption may be revisited in the future, 
+  #' @param dt                    input dataset with columns 'clinical' for clinical incidence,
+  #'                              'severe' for severe incidence, 'deaths', 'ylls', 'age_years_start', and 'age_years_end'
+  #' @param mild_dw               disability weight for mild malaria
+  #' @param moderate_dw           disability weight for moderate malaria
+  #' @param severe_dw             disability weight for severe malaria
+  #' @param clin_episode_length   length of an episode of clinical malaria
+  #' @param severe_episode_length length of an episode of severe malaria 
+  #' 
+  #' Output: data table with columns 'ylds' and 'dalys'
+  
+  require(data.table)
+  
+  message('calculating YLDs and DALYs')
+  
+  # calculate YLDs  ---
+  dt[ age_years_end < 5, yld:= severe * severe_dw * severe_episode_length + 
+        clinical * moderate_dw * clin_episode_length]
 
-raw_clin <- raw_clin |>
-  mutate(yll= deaths * (lifespan - (age_years_end - age_years_start)/2))
+  dt[ age_years_end >= 5, yld:= severe * severe_dw * severe_episode_length + 
+        clinical * mild_dw * clin_episode_length]
+  
+  # calculate DALYs ---
+  dt<- dt |>
+    mutate(daly= yll+ yld)
+  
+  message('completed calculation of YLDs and DALYs')
+  
+  return(dt)
+}
 
-# calculate YLDs
-raw_clin<- raw_clin |> 
-  mutate(yld= severe * severe_dw * severe_episode_length + 
-           clinical * mean(mild_dw+ moderate_dw) * episode_length)
 
-# calculate DALYs
-raw_clin<- raw_clin |>
-  mutate(daly= yll+ yld)
-
+dt<- calculate_ylds_dalys(dt)
 
 # summarize
-# raw_clin |> 
+# dt |> 
 #  group_by(age_years_start) |> 
 #  summarise(yll= sum(yll),
 #            yld= sum(yld),
@@ -115,27 +187,27 @@ raw_clin<- raw_clin |>
 
 # plot outputs over time  ------------------------------------------------------
 
-ggplot(data= raw_clin, mapping = aes(x= time, y= clin_rate))+
+ggplot(data= dt, mapping = aes(x= time, y= clin_rate))+
   geom_line(col = "grey80") +
   stat_smooth(col = "darkblue", se = FALSE) +
   facet_wrap(~age_years_start)
 
-ggplot(data= raw_clin, mapping = aes(x= time, y= severe_rate))+
+ggplot(data= dt, mapping = aes(x= time, y= severe_rate))+
   geom_line(col = "grey80") +
   stat_smooth(col = "darkblue", se = FALSE) +
   facet_wrap(~age_years_start)
 
-ggplot(data= raw_clin, mapping = aes(x= time, y= yll))+
+ggplot(data= dt, mapping = aes(x= time, y= yll))+
   geom_line(col = "grey80") +
   stat_smooth(col = "darkblue", se = FALSE) +
   facet_wrap(~age_years_start)
 
-ggplot(data= raw_clin, mapping = aes(x= time, y= deaths))+
+ggplot(data= dt, mapping = aes(x= time, y= deaths))+
   geom_line(col = "grey80") +
   stat_smooth(col = "darkblue", se = FALSE) +
   facet_wrap(~age_years_start)
 
-ggplot(data= raw_clin, mapping = aes(x= time, y= daly))+
+ggplot(data= dt, mapping = aes(x= time, y= daly))+
   geom_line(col = "grey80") +
   stat_smooth(col = "darkblue", se = FALSE) +
   facet_wrap(~age_years_start)

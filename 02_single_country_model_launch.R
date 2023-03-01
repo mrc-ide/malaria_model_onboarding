@@ -18,7 +18,6 @@ library(vctrs)
 # directories ------------------------------------------------------------------
 setwd('Q:/')
 
-
 # load packages you will need to run malariasimulation package  ----------------
 packages<- c('dplyr', 'tidyr', 'data.table', 'malariasimulation')
 src <- conan::conan_sources("github::mrc-ide/malariasimulation")
