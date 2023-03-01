@@ -1,9 +1,11 @@
-################################################################################
-##    title     03_model_post_processing.R
-##    author    Lydia Haile
-##    purpose   post-process model outputs
-##              aggregate cases, deaths, and DALYs
-################################################################################
+################################################################################################
+##  title   05_scenario_post_processing.R
+##  author  Lydia Haile
+##  purpose calculate cases, deaths, and DALYs averted (baseline versus intervention scenarios)
+##          generally similar post processing to 03_model_post_processing.R
+##          post-processes outputs from 04_specify_future_scenarios.R
+################################################################################################
+
 
 # load packages ----------------------------------------------------------------
 library(malariasimulation)
@@ -13,15 +15,18 @@ library(ggplot2)
 # load in files  ------------------------------------------
 dir<- '/model_test_run/' #directory where outputs are
 
+intvn_files<- list.files(paste0(dir, 'intervention/'), full.names = T)
+intvn<- rbindlist(lapply(files, readRDS), fill= T)
+intvn[, scenario:= 'intervention']
 
-files<- list.files(dir, full.names = T)
-output<- rbindlist(lapply(files, readRDS), fill= T)
+baseline_files<- list.files(paste0(dir, 'baseline/'), full.names = T)
+baseline<- rbindlist(lapply(files, readRDS))
 
 # test on one output file
 model<- data.table(readRDS('C:/Documents and Settings/lhaile/Documents/raw_model_output_Addis Abeba_rural.RDS'))
-model[, iso:= 'ETH']
 
-# reformat and aggregate model outputs  ----------------------------------------
+
+# functions for processing model outputs  --------------------------------------
 
 aggregate_outputs<- function(dt, interval){
   
@@ -38,7 +43,7 @@ aggregate_outputs<- function(dt, interval){
   
   message(paste0('aggregating outputs by time interval: ', interval, ' days'))
   dt <- dt |> 
-    select(timestep, iso,
+    select(timestep, 
            contains("n_inc_clin"), contains("n_inc_sev"), contains("n_age"), 'n_treated') |>  
     pivot_longer(c(contains("n_inc_clin"), contains("n_inc_sev"), contains("n_age")),
                  names_to = "age", 
@@ -78,11 +83,6 @@ aggregate_outputs<- function(dt, interval){
   message('completed aggregation')
   
 }
-
-dt<-aggregate_outputs(model, interval= 30)
-
-# calculate deaths -------------------------------------------------------------
-
 calculate_deaths_ylls<- function(dt, cfr= 0.215, treatment_scaler= 0.45, lifespan= 0.63){
   
   #' Calculate deaths + years of life lost (YLLs) per GTS method.
@@ -98,7 +98,7 @@ calculate_deaths_ylls<- function(dt, cfr= 0.215, treatment_scaler= 0.45, lifespa
   #'                         when comparing YLLs across different locations, it is recommended to use the same lifespan across YLL calculations.
   #'                         Typically, you should use the highest observed life expectancy in the region/ location you are studying.
   #' Output: data table with columns titled 'deaths' and 'yll'
-
+  
   
   message('calculating deaths and YLLs')
   
@@ -122,10 +122,6 @@ calculate_deaths_ylls<- function(dt, cfr= 0.215, treatment_scaler= 0.45, lifespa
   
   return(dt)
 }
-
-
-dt<- calculate_deaths_ylls(dt)
-
 calculate_ylds_dalys<- function(dt, 
                                 mild_dw= 0.006, 
                                 moderate_dw= 0.051, 
@@ -161,7 +157,7 @@ calculate_ylds_dalys<- function(dt,
   # calculate YLDs  ---
   dt[ age_years_end < 5, yld:= severe * severe_dw * severe_episode_length + 
         clinical * moderate_dw * clin_episode_length]
-
+  
   dt[ age_years_end >= 5, yld:= severe * severe_dw * severe_episode_length + 
         clinical * mild_dw * clin_episode_length]
   
@@ -175,39 +171,39 @@ calculate_ylds_dalys<- function(dt,
 }
 
 
-dt<- calculate_ylds_dalys(dt)
+# process outputs --------------------------------------------------------------
+bl<-aggregate_outputs(baseline, interval= 30)
+bl<- calculate_deaths_ylls(bl)
+bl<- calculate_ylds_dalys(bl)
 
-# summarize
-# dt |> 
-#  group_by(age_years_start) |> 
-#  summarise(yll= sum(yll),
-#            yld= sum(yld),
-#            daly= sum(daly))
-#
 
-# plot outputs over time  ------------------------------------------------------
+intvn<- aggregate_outputs(intvn, interval= 30)
+intvn<- calculate_deaths_ylls(intvn)
+intvn<- calculate_ylds_dalys(intvn)
 
-ggplot(data= dt, mapping = aes(x= time, y= clin_rate))+
-  geom_line(col = "grey80") +
-  stat_smooth(col = "darkblue", se = FALSE) +
-  facet_wrap(~age_years_start)
+# calculate cases, deaths, and DALYs averted  ----------------------------------
+setnames(intvn, c('clinical', 'severe', 'deaths', 'yll', 'yld','daly'),
+                c('clinical_intvn', 'severe_intvn', 'deaths_intvn', 'yll_intvn', 'yld_intvn', 'daly_intvn'))
 
-ggplot(data= dt, mapping = aes(x= time, y= severe_rate))+
-  geom_line(col = "grey80") +
-  stat_smooth(col = "darkblue", se = FALSE) +
-  facet_wrap(~age_years_start)
 
-ggplot(data= dt, mapping = aes(x= time, y= yll))+
-  geom_line(col = "grey80") +
-  stat_smooth(col = "darkblue", se = FALSE) +
-  facet_wrap(~age_years_start)
+# merge dataframes by timesteps
+dt<- data.table(merge(bl, intvn, by= c('iso', 'time', 'age_years_start', 'age_years_end')))
 
-ggplot(data= dt, mapping = aes(x= time, y= deaths))+
-  geom_line(col = "grey80") +
-  stat_smooth(col = "darkblue", se = FALSE) +
-  facet_wrap(~age_years_start)
+dt<- dt |>
+mutate(cases_averted= clinical- clinical_intvn,
+       severe_averted= severe- severe_intvn,
+       deaths_averted= deaths- deaths_intvn,
+       yll_averted= yll- yll_intvn,
+       yld_averted= yld- yld_intvn,
+       dalys_averted= daly- daly_intvn)
 
-ggplot(data= dt, mapping = aes(x= time, y= daly))+
-  geom_line(col = "grey80") +
-  stat_smooth(col = "darkblue", se = FALSE) +
-  facet_wrap(~age_years_start)
+# save to output folder
+output_folder<- 'Q:/model_test_run/final_output/'
+dir.create(output_folder)
+
+write.csv(dt, paste0(output_folder, 'processed_outputs.csv'))
+
+
+
+
+
