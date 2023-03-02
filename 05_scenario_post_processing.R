@@ -27,7 +27,6 @@ model<- data.table(readRDS('C:/Documents and Settings/lhaile/Documents/raw_model
 
 
 # functions for processing model outputs  --------------------------------------
-
 aggregate_outputs<- function(dt, interval){
   
   #' aggregate incident cases based on a pre-determined time interval (expressed in days). 
@@ -39,12 +38,12 @@ aggregate_outputs<- function(dt, interval){
   #' output: data table with summed cases and rates over specified time interval.
   
   # reformat case outputs to long
-  # need clinical cases, severe cases, population, number treated
+  # need clinical cases, severe cases, population, number treated, and number detected
   
   message(paste0('aggregating outputs by time interval: ', interval, ' days'))
   dt <- dt |> 
-    select(timestep, 
-           contains("n_inc_clin"), contains("n_inc_sev"), contains("n_age"), 'n_treated') |>  
+    select(timestep, iso,
+           contains("n_inc_clin"), contains("n_inc_sev"), contains("n_age"), contains('n_treated'), contains('n_detect')) |>  
     pivot_longer(c(contains("n_inc_clin"), contains("n_inc_sev"), contains("n_age")),
                  names_to = "age", 
                  values_to = "value") |>
@@ -68,6 +67,7 @@ aggregate_outputs<- function(dt, interval){
     mutate(clinical = sum(clinical),
            severe = sum(severe),
            n_treated = sum(n_treated),
+           n_detect= sum(n_detect),
            population = round(mean(population))) |>
     select(-timestep) |>
     distinct()
@@ -77,7 +77,8 @@ aggregate_outputs<- function(dt, interval){
   # calculate rates based on this interval
   dt<- dt |> 
     mutate(clin_rate = clinical/ population,
-           severe_rate = severe/ population)
+           severe_rate = severe/ population,
+           prevalence= n_detect/ population)
   
   return(dt)
   message('completed aggregation')

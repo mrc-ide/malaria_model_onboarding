@@ -39,6 +39,7 @@ library(vctrs)
 
 # specify packages or functions you need for your job --------------------------
 # you will need to have your code on a network drive to run it on the cluster
+# I mapped my network drive to Q
 setwd('Q:/')
 options(didehpc.cluster = "fi--didemrchnb", didehpc.username = "lhaile")
 
