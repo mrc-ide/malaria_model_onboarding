@@ -9,6 +9,6 @@ Code used to onboard the malariasimulation package.
 
 * [03_model_post_processing.R](https://github.com/mrc-ide/malaria_model_onboarding/blob/main/03_model_post_processing.R): Processes model outputs to produce aggregated cases, deaths, and DALYs for a single country.
 
-* [04_specify_future_scenarios.R](https://github.com/mrc-ide/malaria_model_onboarding/blob/main/04_specify_future_scenarios.R): Runs two scenarios (one with intervention scale-up and one without intervention scale-up)
+* [04_specify_future_scenarios.R](https://github.com/mrc-ide/malaria_model_onboarding/blob/main/04_specify_future_scenarios.R): Runs two scenarios (one with intervention scale-up and one without intervention scale-up). Started with MDA and RTS,S vaccination, but could be updated to be more modular/ scalable in the future.
 
 * [05_scenario_post_processing.R](https://github.com/mrc-ide/malaria_model_onboarding/blob/main/05_scenario_post_processing.R): Runs post-processing on scenario model outputs. 
