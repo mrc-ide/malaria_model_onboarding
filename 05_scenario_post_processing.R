@@ -24,7 +24,7 @@ baseline<- rbindlist(lapply(files, readRDS))
 
 # test on one output file
 model<- data.table(readRDS('C:/Documents and Settings/lhaile/Documents/raw_model_output_Addis Abeba_rural.RDS'))
-
+git
 
 # functions for processing model outputs  --------------------------------------
 aggregate_outputs<- function(dt, interval){
@@ -84,7 +84,7 @@ aggregate_outputs<- function(dt, interval){
   message('completed aggregation')
   
 }
-calculate_deaths_ylls<- function(dt, cfr= 0.215, treatment_scaler= 0.45, lifespan= 0.63){
+calculate_deaths_ylls<- function(dt, cfr= 0.215, treatment_scaler= 0.45, lifespan= 63){
   
   #' Calculate deaths + years of life lost (YLLs) per GTS method.
   #' Where severe cases= 0, deaths= 0. Additionally remove a proportion of the cases that have received treatment.

@@ -27,7 +27,7 @@ src <- conan::conan_sources("github::mrc-ide/malariasimulation")
 ctx <- context::context_save('pkgs', 
                              packages = packages, 
                              package_sources = src,
-                             sources = '/run_malaria_model.R')
+                             sources = 'Q:/model_onboarding/run_malaria_model.R')
 
 
 # load context into queue
@@ -45,7 +45,7 @@ site_data<- foresite:::get_site(iso)
 
 prep_inputs<- function(site_data){
   
-  #' Prep inputs (without parameter updates)
+  #' Pull site file inputs (without parameter updates) and reformat for batch runs
   #'
   #' @param site_data dataset with site files for country
   #' output: list with site name, urban/rural grouping, iso code, and parameters to pass into cluster
@@ -87,7 +87,7 @@ prep_inputs<- function(site_data){
 output<- prep_inputs(site_data)
 
 # submit batch of jobs for single country run ----------------------------------
-grp <- obj$lapply(output, run_malaria_model)
+grp <- obj$lapply(output, run_malaria_model, folder= 'Q:/model_test_run/')
 
 folder<- 'Q:/model_test_run/' # folder you would like to save outputs in
 

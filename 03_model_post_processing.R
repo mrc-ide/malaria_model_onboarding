@@ -12,17 +12,17 @@ library(ggplot2)
 library(tidyr)
 
 # load in files  ------------------------------------------
-dir<- '/model_test_run/' #directory where outputs are
+dir<- 'Q:/model_test_run/' #directory where outputs are
 
 
 files<- list.files(dir, full.names = T)
 output<- rbindlist(lapply(files, readRDS), fill= T)
 
 # test on one output file
-model<- data.table(readRDS('C:/Documents and Settings/lhaile/Documents/raw_model_output_Addis Abeba_rural.RDS'))
-model[, iso:= 'ETH']
+#model<- data.table(readRDS('C:/Documents and Settings/lhaile/Documents/raw_model_output_Addis Abeba_rural.RDS'))
+#model[, iso:= 'ETH']
 
-dt<- model
+dt<- output
 # reformat and aggregate model outputs  ----------------------------------------
 
 aggregate_outputs<- function(dt, interval){
@@ -47,11 +47,12 @@ aggregate_outputs<- function(dt, interval){
                  values_to = "value") |>
     mutate(type = ifelse(grepl('n_inc_clinical', age), 'clinical', 'severe')) |>
     mutate(type = ifelse(grepl('n_age', age), 'population', type))|>
+    #mutate(type = ifelse(grepl('n_detect', age), 'detected', type))|>
     mutate(age = gsub('n_inc_clinical_', '', age),
            age = gsub('n_inc_severe_', '', age),
            age = gsub('n_age_', '', age)) |>
     spread(key= type, value= value) |>
-    separate(age, into = c("age_years_start", "age_years_end"), sep = "_")
+    separate(age, into = c("age_days_start", "age_days_end"), sep = "_") 
   
   
   # calculate incidence based on some time interval
@@ -65,7 +66,7 @@ aggregate_outputs<- function(dt, interval){
     mutate(clinical = sum(clinical),
            severe = sum(severe),
            n_treated = sum(n_treated),
-           n_detect= sum(n_detect),
+           #n_detect= sum(detected),
            population = round(mean(population))) |>
     select(-timestep) |>
     distinct()
@@ -75,8 +76,8 @@ aggregate_outputs<- function(dt, interval){
   # calculate rates based on this interval
   dt<- dt |> 
     mutate(clin_rate = clinical/ population,
-           severe_rate = severe/ population,
-           prevalence= n_detect/ population)
+           severe_rate = severe/ population)
+           #prevalence= n_detect/ population)
   
   return(dt)
   message('completed aggregation')
@@ -86,8 +87,9 @@ aggregate_outputs<- function(dt, interval){
 dt<-aggregate_outputs(model, interval= 30)
 
 # calculate deaths -------------------------------------------------------------
+# transform age into years
 
-calculate_deaths_ylls<- function(dt, cfr= 0.215, treatment_scaler= 0.45, lifespan= 0.63){
+calculate_deaths_ylls<- function(dt, cfr= 0.215, treatment_scaler= 0.45, lifespan= 63){
   
   #' Calculate deaths + years of life lost (YLLs) per GTS method.
   #' Where severe cases= 0, deaths= 0. Additionally remove a proportion of the cases that have received treatment.
@@ -106,6 +108,11 @@ calculate_deaths_ylls<- function(dt, cfr= 0.215, treatment_scaler= 0.45, lifespa
   
   message('calculating deaths and YLLs')
   
+  # transform age into years
+  
+  dt |>
+    mutate(age_years_start= age_days_start/ 365,
+           age_years_start= age)
   dt<- dt |>
     mutate(deaths =  cfr * severe - (n_treated * treatment_scaler))
   

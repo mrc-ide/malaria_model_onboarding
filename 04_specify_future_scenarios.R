@@ -1,7 +1,8 @@
 ################################################################################
 ##    title   specify_future_scenarios.R
 ##    purpose paramereterise two scenarios: one with intervention scale up and one without
-##            started with MDA and RTS, S vaccinnation
+##            started with MDA and RTS, S vaccination
+##            helper functions for changing intervention parameters
 ##    author  Lydia Haile
 ################################################################################
 
@@ -14,19 +15,48 @@ library(didehpc)
 library(conan)
 library(drat)
 library(vctrs)
+options(repos = c(
+  mrcide = "https://mrc-ide.r-universe.dev",
+  CRAN = "https://cloud.r-project.org"))
+drat::addRepo("malariaverse", "file:\\\\fi--didef3.dide.ic.ac.uk/malaria/malariaverse/drat")
+remotes::install_github("mrc-ide/scene")
+#remotes::install_github("mrc-ide/mvw")
+
+library(scene)
 
 # directories ------------------------------------------------------------------
 setwd('Q:/')#
 
+
 ## view sites associated with a country site file  -----------------------------
 iso<- 'ETH'
 
-# get site data
+# get site data for a single country
 site_data<- foresite:::get_site(iso)
 
+# plot initial intervention coverage  ------------------------------------------
+plot_interventions_combined(
+  interventions = site_data$interventions,
+  population = site_data$population,
+  group_var = c("country", "name_1"),
+  include = c("itn_use", "itn_input_dist", "tx_cov",
+              "irs_cov", "rtss_cov", "smc_cov", "pmc_cov"),
+  labels = c("ITN usage", "ITN model input", "Treatment",
+             "IRS", "RTSS", "SMC", "PMC")
+)
+
+
+# use scene package to update site data
+intervention <- copy(site_data)
+group_var <- names(site_data$sites)
+baseline<- copy(site_data)
+
+# expand intervention years ----------------------------------------------------
+
+# prep site data for model launch ----------------------------------------------
 prep_inputs<- function(site_data){
   
-  #' Prep inputs (without parameter updates)
+  #' Prep inputs for batch launch
   #'
   #' @param site_data dataset with site files for country
   #' output: list with site name, urban/rural grouping, iso code, and parameters to pass into cluster
@@ -38,7 +68,7 @@ prep_inputs<- function(site_data){
   message(paste0('prepping ', jobs, ' jobs for model launch'))
   
   prep_site_data<- function(num){
-    site<- site::single_site(site_data, index= num) 
+    site<- site::single_site(site_file= site_data, index= num) 
     
     ## get site info
     site_name<- site$sites$name_1
@@ -66,6 +96,50 @@ output<- prep_inputs(site_data)
 
 baseline<- output
 intervention<- copy(output)
+
+
+# Expand the interventions for each site in the site file up to year 10
+new_scenario$interventions <- new_scenario$interventions |>
+  expand_interventions(max_year = 10, group_var = group_var)
+
+# Add a target ITN usage of 60% in all sites by year 8
+new_scenario$interventions <- new_scenario$interventions |>
+  set_change_point(sites = new_scenario$sites, var = "itn_use", year = 8, target = 0.6)
+
+# Add a target PMC coverage of 80% in site A
+to_get_pmc <- new_scenario$sites[new_scenario$sites$site == "A", ]
+new_scenario$interventions <- new_scenario$interventions |>
+  set_change_point(sites = to_get_pmc, var = "pmc_cov", year = 10, target = 0.8)
+
+# Add a target SMC coverage of 50% to any sites that have previously implemented SMC
+to_get_smc <- ever_used(
+  interventions = example_site$interventions,
+  var = "smc_cov",
+  group_var = group_var
+)
+new_scenario$interventions <- new_scenario$interventions |>
+  set_change_point(sites = to_get_smc, var = "smc_cov", year = 10, target = 0.5)
+
+# Linear scale up of coverage
+new_scenario$interventions <- new_scenario$interventions |>
+  linear_interpolate(vars = c("itn_use", "pmc_cov", "smc_cov"), group_var = group_var)
+
+new_scenario$interventions <- new_scenario$interventions |>
+  fill_extrapolate(group_var = group_var)
+
+new_scenario$interventions <- new_scenario$interventions |>
+  add_future_net_dist(group_var = group_var)
+
+plot_interventions_combined(
+  interventions = new_scenario$interventions,
+  population = new_scenario$population,
+  group_var = c("country", "site"),
+  include = c("itn_use", "itn_input_dist", "fitted_usage", "tx_cov", "smc_cov", "pmc_cov"),
+  labels = c("ITN usage", "ITN model input","ITN model usage", "Treatment","SMC", "PMC")
+)
+
+
+
 # change intervention coverage parameters --------------------------------------
 
 specify_intervention_coverage<- function(output, mda= T, rtss= T){
