@@ -1,12 +1,13 @@
-################################################################################
+######################################################################################################################
 ##    title   specify_future_scenarios.R
 ##    purpose paramereterise two scenarios: one with intervention scale up and one without
 ##            started with MDA and RTS, S vaccination
 ##            helper functions for changing intervention parameters
-##    author  Lydia Haile
-################################################################################
+##            code sourced from scene package vignette: https://mrc-ide.github.io/scene/articles/future-scenario.html
+##    author  Lydia Haile (modified from scene package vignette)
+######################################################################################################################
 
-# load packages ----------------------------------------------------------------
+# load packages -----------------------------------------------------------------------------------
 library(malariasimulation)
 library(foresite)
 library(data.table)
@@ -15,6 +16,7 @@ library(didehpc)
 library(conan)
 library(drat)
 library(vctrs)
+
 options(repos = c(
   mrcide = "https://mrc-ide.r-universe.dev",
   CRAN = "https://cloud.r-project.org"))
@@ -24,8 +26,8 @@ remotes::install_github("mrc-ide/scene")
 
 library(scene)
 
-# directories ------------------------------------------------------------------
-setwd('Q:/')#
+# directories --------------------------------------------------------------------------------------
+setwd('Q:/')
 
 
 ## view sites associated with a country site file  -----------------------------
@@ -45,13 +47,109 @@ plot_interventions_combined(
              "IRS", "RTSS", "SMC", "PMC")
 )
 
-
-# use scene package to update site data
-intervention <- copy(site_data)
-group_var <- names(site_data$sites)
+# keep baseline data as is  ----------------------------------------------------
 baseline<- copy(site_data)
 
-# expand intervention years ----------------------------------------------------
+# use scene package to update site data for intervention scenario
+intvn <- copy(site_data)
+group_var <- names(intvn$sites)
+
+# settings you would like to modify for group of sites -------------------------
+# I find it easier to keep track of changes in one place
+# you can also hardcode them if you would like something more complex, this is a basic use case
+
+expand_years<- 10 # years you would like to expand intervention coverage out for. If you do not want to expand out to the future, set this to 0.
+
+itn_change<- T    # do you want to modify ITN usage?
+itn_target<- 0.6  # target for itn usage
+itn_year<- 8      # year you would like itn coverage to reach this target
+
+pmc_change<- T
+pmc_target<- 0.8  
+pmc_year<-   8
+
+rtss_change<- T
+rtss_target<- 0.5
+rtss_year<-  8
+
+smc_change<- T
+smc_change<- 0.3
+smc_year<- 8
+
+# expand intervention years ---------------------------------------------------
+intvn$interventions <- intvn$interventions |>
+  expand_interventions(max_year = expand_years,
+                       group_var = group_var)
+
+# ITN usage --------------------------------------------------------------------
+# Add a target ITN usage of 60% in all sites by year 8
+if(itn_change== T){
+intvn$interventions <- intvn$interventions |>
+  set_change_point(sites = intvn$sites, 
+                   var = "itn_use", 
+                   year = itn_year, 
+                   target = itn_target)
+}
+# PMC coverage  ----------------------------------------------------------------
+
+if(pmc_change== T){
+intvn$interventions <- intvn$interventions |>
+  set_change_point(sites = intvn$sites, 
+                   var = "pmc_cov", 
+                   year = pmc_year, 
+                   target = pmc_target)
+}
+# RTSS coverage ----------------------------------------------------------------
+
+if (rtss_change== T){
+intvn$interventions <- intvn$interventions |>
+  set_change_point(sites = intvn$sites, 
+                   var = "rtss_cov", 
+                   year = rtss_year, 
+                   target = rtss_target)
+}
+
+# SMC coverage  ----------------------------------------------------------------
+if (smc_change== T){
+  
+intvn$interventions <- intvn$interventions |>
+  set_change_point(sites = intvn$sites, 
+                   var = "smc_cov", 
+                   year = smc_year, 
+                   target = smc_target)
+
+}
+
+# Linear scale up of coverage
+intvn$interventions <- intvn$interventions |>
+  linear_interpolate(vars = c("itn_use", "pmc_cov", "smc_cov", "rtss_cov"), 
+                     group_var = group_var)
+
+intvn$interventions <- intvn$interventions |>
+  fill_extrapolate(group_var = group_var)
+
+intvn$interventions <- intvn$interventions |>
+  add_future_net_dist(group_var = group_var)
+
+
+# plot the changes you made ----------------------------------------------------
+plot_interventions_combined(
+  interventions = intvn$interventions,
+  population = intvn$population,
+  group_var = c("country", "site"),
+  include = c("itn_use", "itn_input_dist", "tx_cov", "smc_cov", "pmc_cov"),
+  labels = c("ITN usage", "ITN model input", "Treatment","SMC", "PMC")
+)
+
+
+# plot baseline to make sure they look different  ------------------------------
+plot_interventions_combined(
+  interventions = intvn$interventions,
+  population = intvn$population,
+  group_var = c("country", "site"),
+  include = c("itn_use", "itn_input_dist", "tx_cov", "smc_cov", "pmc_cov"),
+  labels = c("ITN usage", "ITN model input", "Treatment","SMC", "PMC")
+)
 
 # prep site data for model launch ----------------------------------------------
 prep_inputs<- function(site_data){
@@ -92,127 +190,12 @@ prep_inputs<- function(site_data){
   output<- lapply(c(1:jobs), prep_site_data)
 }
 
-output<- prep_inputs(site_data)
 
-baseline<- output
-intervention<- copy(output)
-
-
-# Expand the interventions for each site in the site file up to year 10
-new_scenario$interventions <- new_scenario$interventions |>
-  expand_interventions(max_year = 10, group_var = group_var)
-
-# Add a target ITN usage of 60% in all sites by year 8
-new_scenario$interventions <- new_scenario$interventions |>
-  set_change_point(sites = new_scenario$sites, var = "itn_use", year = 8, target = 0.6)
-
-# Add a target PMC coverage of 80% in site A
-to_get_pmc <- new_scenario$sites[new_scenario$sites$site == "A", ]
-new_scenario$interventions <- new_scenario$interventions |>
-  set_change_point(sites = to_get_pmc, var = "pmc_cov", year = 10, target = 0.8)
-
-# Add a target SMC coverage of 50% to any sites that have previously implemented SMC
-to_get_smc <- ever_used(
-  interventions = example_site$interventions,
-  var = "smc_cov",
-  group_var = group_var
-)
-new_scenario$interventions <- new_scenario$interventions |>
-  set_change_point(sites = to_get_smc, var = "smc_cov", year = 10, target = 0.5)
-
-# Linear scale up of coverage
-new_scenario$interventions <- new_scenario$interventions |>
-  linear_interpolate(vars = c("itn_use", "pmc_cov", "smc_cov"), group_var = group_var)
-
-new_scenario$interventions <- new_scenario$interventions |>
-  fill_extrapolate(group_var = group_var)
-
-new_scenario$interventions <- new_scenario$interventions |>
-  add_future_net_dist(group_var = group_var)
-
-plot_interventions_combined(
-  interventions = new_scenario$interventions,
-  population = new_scenario$population,
-  group_var = c("country", "site"),
-  include = c("itn_use", "itn_input_dist", "fitted_usage", "tx_cov", "smc_cov", "pmc_cov"),
-  labels = c("ITN usage", "ITN model input","ITN model usage", "Treatment","SMC", "PMC")
-)
+baseline<- prep_inputs(baseline)
+intervention<- copy(intvn)
 
 
-
-# change intervention coverage parameters --------------------------------------
-
-specify_intervention_coverage<- function(output, mda= T, rtss= T){
-  #' Parent function for modify_interventions function
-  #' @param output parameter file created from prep_inputs
-  #' @param change_mda if true, change MDA parameters
-  #' @param change_rtss if true, change RTS,S parameters
-  
-  sites<- length(output) #number of sites you would like to modify coverage for
-
-  modify_interventions<- function(index, mda= T, rtss= T){
-   
-    #' Specify intervention coverage for pre-existing site data prepped using prep_inputs
-    #'
-    #' @param index row of site file you will modify
-    #' @param mda if true, change MDA parameters
-    #' @param rtss if true, change RTS,S parameters
-    
-    
-    params<- output[[index]]$param_list
-    
-    if (mda== T){
-    # Add MDA strategy
-    mda_events = data.frame(
-      timestep = c(1, 2) * 365,
-      name=c("MDA 1", "MDA 2")
-    )  
-    params <- set_mda(
-      params,
-      drug = 1,
-      timesteps = mda_events$timestep,
-      coverages = rep(.8, 2),
-      min_ages = rep(0, length(mda_events$timestep)),
-      max_ages = rep(200 * 365, length(mda_events$timestep))
-    )
-    
-    }
-    
-    # different RTS,S scenario
-    
-    if (rtss== T){
-    month<- 30
-    #
-    params <- set_mass_rtss(
-      params,
-      timesteps = params$timesteps,
-      coverages = rep(1, 2),
-      min_wait = 0, # minimum acceptable time since the last vaccination
-      min_ages = 5 * month, #target population minimum
-      max_ages = 17 * month, #target population maximum
-      boosters = 18 * month,
-      booster_coverage = 0.95
-    )
-    }
-    
-    # reassign to input dataset
-    output[[index]]$param_list<- params
-    message(paste0('reassigned row ', index))
-    
-    return(output)
-  }
-  
-  output<- lapply(c(1:sites), 
-                  modify_interventions, 
-                  mda= change_mda, 
-                  rtss= change_rtss) 
-    
-  }
-  
-  
-intervention<- specify_intervention_coverage(intervention)  
-
-
+# submit jobs to cluster  ------------------------------------------------------
 message(paste0('submitting ', length(output),  ' jobs'))
 
 # load packages you will need to run malariasimulation package  ----------------
