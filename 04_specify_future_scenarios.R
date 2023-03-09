@@ -4,7 +4,7 @@
 ##            started with MDA and RTS, S vaccination
 ##            helper functions for changing intervention parameters
 ##            code sourced from scene package vignette: https://mrc-ide.github.io/scene/articles/future-scenario.html
-##    author  Lydia Haile (modified from scene package vignette)
+##    author  Lydia Haile (pulled from scene package vignette written by Pete Winskill)
 ######################################################################################################################
 
 # load packages ----------------------------------------------------------------

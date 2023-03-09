@@ -89,7 +89,7 @@ dt<-aggregate_outputs(model, interval= 30)
 # calculate deaths -------------------------------------------------------------
 # transform age into years
 
-calculate_deaths_ylls<- function(dt, cfr= 0.215, treatment_scaler= 0.45, lifespan= 63){
+calculate_deaths_ylls<- function(dt, cfr= 0.215, treatment_scaler= 0.5, lifespan= 63){
   
   #' Calculate deaths + years of life lost (YLLs) per GTS method.
   #' Where severe cases= 0, deaths= 0. Additionally remove a proportion of the cases that have received treatment.
@@ -97,7 +97,7 @@ calculate_deaths_ylls<- function(dt, cfr= 0.215, treatment_scaler= 0.45, lifespa
   #' @param dt               malariasimulation model outputs with columns 'severe' for severe incidence and 'n_treated' for number of individuals treated
   #' @param cfr              per GTS method, deaths are calculated using a case fatality ratio (CFR) value that is applied to severe incidence.
   #'                         see World Malaria Report and Wilson et al. for more information.
-  #' @param treatment_scaler we remove a proportion of cases that have received treatment, assuming that 45% of treated cases remit and
+  #' @param treatment_scaler we remove a proportion of cases that have received treatment, assuming that 50% of treated cases remit and
   #'                         are no longer susceptible to mortality.
   #' @param lifespan         expected lifespan used to calculate YLLs. 
   #'                         YLLs are calculated by multiplying deaths by the number of years an individual was expected to live past their year of death.
