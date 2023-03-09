@@ -7,7 +7,14 @@
 ##    author  Lydia Haile (modified from scene package vignette)
 ######################################################################################################################
 
-# load packages -----------------------------------------------------------------------------------
+# load packages ----------------------------------------------------------------
+options(repos = c(
+  mrcide = "https://mrc-ide.r-universe.dev",
+  CRAN = "https://cloud.r-project.org"))
+drat::addRepo("malariaverse", "file:\\\\fi--didef3.dide.ic.ac.uk/malaria/malariaverse/drat")
+#remotes::install_github("mrc-ide/scene")
+#remotes::install_github("mrc-ide/mvw")
+
 library(malariasimulation)
 library(foresite)
 library(data.table)
@@ -16,19 +23,10 @@ library(didehpc)
 library(conan)
 library(drat)
 library(vctrs)
-
-options(repos = c(
-  mrcide = "https://mrc-ide.r-universe.dev",
-  CRAN = "https://cloud.r-project.org"))
-drat::addRepo("malariaverse", "file:\\\\fi--didef3.dide.ic.ac.uk/malaria/malariaverse/drat")
-remotes::install_github("mrc-ide/scene")
-#remotes::install_github("mrc-ide/mvw")
-
 library(scene)
 
-# directories --------------------------------------------------------------------------------------
+# directories ------------------------------------------------------------------
 setwd('Q:/')
-
 
 ## view sites associated with a country site file  -----------------------------
 iso<- 'ETH'
@@ -56,25 +54,25 @@ group_var <- names(intvn$sites)
 
 # settings you would like to modify for group of sites -------------------------
 # I find it easier to keep track of changes in one place
-# you can also hardcode them if you would like something more complex, this is a basic use case
+# you can also hard-code them if you would like something more complex, this is a basic use case
 
-expand_years<- 10 # years you would like to expand intervention coverage out for. If you do not want to expand out to the future, set this to 0.
+expand_years<- 2050 # years you would like to expand intervention coverage out for. If you do not want to expand out to the future, set this to 0.
 
 itn_change<- T    # do you want to modify ITN usage?
 itn_target<- 0.6  # target for itn usage
-itn_year<- 8      # year you would like itn coverage to reach this target
+itn_year<- 2045      # year you would like itn coverage to reach this target
 
-pmc_change<- T
-pmc_target<- 0.8  
-pmc_year<-   8
+pmc_change<- T    # do you want to modify PMC?
+pmc_target<- 0.8  # target PMC
+pmc_year<-   2040    # year for this target
 
-rtss_change<- T
-rtss_target<- 0.5
-rtss_year<-  8
+rtss_change<- T   # do you want to modify RTSS?
+rtss_target<- 0.5 # target for RTSS
+rtss_year<-  2035    # year for target
 
-smc_change<- T
-smc_change<- 0.3
-smc_year<- 8
+smc_change<- T    # do you want to modify SMC?
+smc_target<- 0.3  # target for SMC
+smc_year<- 2025      # year of target
 
 # expand intervention years ---------------------------------------------------
 intvn$interventions <- intvn$interventions |>
@@ -82,8 +80,8 @@ intvn$interventions <- intvn$interventions |>
                        group_var = group_var)
 
 # ITN usage --------------------------------------------------------------------
-# Add a target ITN usage of 60% in all sites by year 8
 if(itn_change== T){
+  
 intvn$interventions <- intvn$interventions |>
   set_change_point(sites = intvn$sites, 
                    var = "itn_use", 
@@ -91,8 +89,8 @@ intvn$interventions <- intvn$interventions |>
                    target = itn_target)
 }
 # PMC coverage  ----------------------------------------------------------------
-
 if(pmc_change== T){
+  
 intvn$interventions <- intvn$interventions |>
   set_change_point(sites = intvn$sites, 
                    var = "pmc_cov", 
@@ -100,8 +98,8 @@ intvn$interventions <- intvn$interventions |>
                    target = pmc_target)
 }
 # RTSS coverage ----------------------------------------------------------------
-
 if (rtss_change== T){
+  
 intvn$interventions <- intvn$interventions |>
   set_change_point(sites = intvn$sites, 
                    var = "rtss_cov", 
@@ -136,7 +134,7 @@ intvn$interventions <- intvn$interventions |>
 plot_interventions_combined(
   interventions = intvn$interventions,
   population = intvn$population,
-  group_var = c("country", "site"),
+  group_var = c("country", "name_1"),
   include = c("itn_use", "itn_input_dist", "tx_cov", "smc_cov", "pmc_cov"),
   labels = c("ITN usage", "ITN model input", "Treatment","SMC", "PMC")
 )
@@ -144,9 +142,9 @@ plot_interventions_combined(
 
 # plot baseline to make sure they look different  ------------------------------
 plot_interventions_combined(
-  interventions = intvn$interventions,
-  population = intvn$population,
-  group_var = c("country", "site"),
+  interventions = baseline$interventions,
+  population = baseline$population,
+  group_var = c("country", "name_1"),
   include = c("itn_use", "itn_input_dist", "tx_cov", "smc_cov", "pmc_cov"),
   labels = c("ITN usage", "ITN model input", "Treatment","SMC", "PMC")
 )
@@ -226,3 +224,4 @@ dir.create(fold)
 grp2 <- obj$lapply(intervention, run_malaria_model, folder= fold)
 
 
+devtools::find_rtools()
